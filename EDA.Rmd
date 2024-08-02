@@ -1,0 +1,643 @@
+---
+title: "DATA FEST 2024"
+author: "Haojie Liu"
+date: "2024-04-27"
+output: pdf_document
+---
+
+```{r}
+library(tidyverse)
+library(forecast)
+```
+
+```{r}
+
+checkpoints_eoc <- read.csv("checkpoints_eoc.csv")
+checkpoints_pulse <- read.csv("checkpoints_pulse.csv")
+items <- read.csv("items.csv")
+media_views <- read.csv("media_views.csv")
+page_views <- read.csv("page_views.csv")
+responses <- read.csv("responses.csv")
+
+```
+
+```{r}
+checkpoints_eoc %>% 
+  head()
+
+items
+```
+
+
+```{r}
+ # check if students have more than one institution
+
+
+checkpoints_eoc %>% 
+  left_join(checkpoints_pulse, by= join_by(student_id)) %>% 
+  group_by(student_id) %>% 
+  select(student_id, institution_id) %>% 
+  distinct() %>% 
+  na.omit() %>% 
+  summarise(n = n()) %>% 
+  arrange(desc(n))
+  
+```
+
+
+
+```{r}
+
+checkpoints_eoc %>% 
+  left_join(checkpoints_pulse, by= join_by(student_id)) %>%
+  mutate(institution_id = ifelse(is.na(institution_id), "self", institution_id)) %>% 
+  group_by(institution_id) %>% 
+  summarize(count = n(), 
+            mean_score = mean(EOC, na.rm = TRUE)) %>% 
+  arrange(desc(mean_score))
+  
+```
+
+
+```{r}
+checkpoints_eoc %>% 
+  left_join(items, by = join_by(class_id))
+
+items
+
+checkpoints_eoc
+
+media_views %>% 
+  select(student_id, book)
+
+book_collect <- page_views %>% 
+  select(class_id, book, release) %>% 
+  group_by(class_id) %>% 
+  unique()
+
+
+temp <- checkpoints_eoc %>% 
+  group_by(class_id, chapter_number) %>% 
+  summarize(mean_score = mean(EOC, na.rm = TRUE)) %>% 
+  left_join(book_collect, join_by(class_id))
+
+
+temp %>% 
+  filter(book == "College / Statistics and Data Science (ABC)") %>% 
+  filter(class_id == "20bd524c-bb2d-4b74-a419-929475b91d94")
+
+
+temp %>% 
+  filter(book == "College / Statistics and Data Science (ABC)") %>% 
+  ggplot(aes(
+    x = chapter_number,
+    y = mean_score,
+    color = class_id
+  )) + geom_line() + theme(legend.position="none")
+
+lm1 <- with(temp %>% filter(book == "College / Statistics and Data Science (ABC)"), lm(`mean_score` ~ chapter_number))
+
+summary(lm1)
+plot(lm1)
+
+
+```
+
+
+
+```{r}
+page_views %>% 
+  filter(!is.na(chapter_number)) %>% 
+  mutate(engaged = log(abs(engaged)))%>% 
+  mutate(engaged = ifelse(engaged == -Inf, 0.0001, engaged)) %>% 
+  group_by(class_id, chapter_number) %>% 
+  summarize(mean_time = mean(engaged, na.rm = TRUE)) %>% 
+  left_join(book_collect, join_by(class_id)) %>% 
+  filter(book == "College / Statistics and Data Science (ABC)") %>% 
+  ggplot(aes(
+    x = chapter_number,
+    y = mean_time,
+    color = class_id
+  )) + geom_line() + theme(legend.position="none")
+
+
+temp <- page_views %>% 
+  filter(!is.na(chapter_number)) %>% 
+  mutate(engaged = log(abs(engaged)))%>% 
+  mutate(engaged = ifelse(engaged == -Inf, 0.0001, engaged)) %>% 
+  group_by(class_id, chapter_number) %>% 
+  summarize(mean_time = mean(engaged, na.rm = TRUE)) %>% 
+  left_join(book_collect, join_by(class_id))
+
+summary(lm(mean_time ~ chapter_number, data = temp))
+
+
+```
+
+
+```{r}
+page_views %>% 
+  filter(!is.na(chapter_number)) %>% 
+  group_by(class_id, chapter_number)
+page_views
+
+for(i in 1:12){
+  a <- page_views %>% filter(book == "College / Statistics and Data Science (ABC)", chapter_number == i) %>% select(engaged)
+  a <- log(abs(a))
+
+  hist(unlist(a), breaks = 100)
+}
+
+
+page_views %>% 
+  filter(!is.na(chapter_number)) %>% 
+  group_by(class_id, chapter_number) %>% 
+  summarize(a = log(abs(engaged))) %>% 
+  na.omit() %>% 
+  filter(chapter_number == 2) %>% 
+  mutate(a = ifelse(a == -Inf, 0.0001, a)) %>% 
+  summarize(mean(a))
+  
+  
+  summarize(mean_time = mean(log(abs(engaged)), na.rm = TRUE))
+  
+  
+  
+
+```
+
+
+
+
+objective: 
+  Find variables that will somehow influence "engaged", which represent how long a student can be stucked on a single chapter page
+  
+
+variables:
+
+
+response var:
+
+EOC
+engaged
+
+  idle_brief
+  idle_long
+
+
+```{r}
+table(page_views$chapter_number, page_views$section_number, page_views$was_complete)
+
+
+temp <- page_views %>% 
+  group_by(book, chapter_number, section_number) %>% 
+  summarise(view_n = sum(was_complete, na.rm = TRUE)) %>% 
+  na.omit() %>% 
+  arrange(desc(view_n))
+
+
+plot(temp$chapter_number, temp$view_n)
+
+
+temp <- page_views %>% 
+  filter(book=="College / Advanced Statistics and Data Science (ABCD)") %>% 
+  group_by(student_id,chapter_number, section_number) %>% 
+  summarize(tried_again_clicks = mean(tried_again_clicks)) %>% 
+  ungroup() %>% 
+  group_by(chapter_number, section_number) %>% 
+  summarise(view_n = mean(tried_again_clicks, na.rm = TRUE)) %>% 
+  na.omit() %>% 
+  arrange(desc(view_n))
+
+
+plot(temp$chapter_number, temp$view_n)
+
+page_views
+
+```
+
+
+
+```{r}
+
+temp <- page_views %>% 
+  group_by(book, student_id,chapter_number, section_number) %>% 
+  summarize(tried_again_clicks = mean(tried_again_clicks)) %>% 
+  ungroup() %>% 
+  group_by(chapter_number, section_number) %>% 
+  summarise(view_n = mean(tried_again_clicks, na.rm = TRUE)) %>% 
+  na.omit() %>% 
+  arrange(desc(view_n))
+
+temp
+
+
+plot(temp$chapter_number, temp$view_n)
+
+page_views
+
+
+```
+
+
+
+```{r}
+responses %>% 
+  group_by(student_id) %>% 
+  summarise(m = mean(attempt),
+            maxi = max(attempt)) %>% 
+  arrange(desc(m))
+
+
+responses %>% 
+  group_by(item_type) %>% 
+  summarise(m = mean(attempt),
+            maxi = max(attempt)) %>% 
+  arrange(desc(m))
+
+temp2 <- responses %>% 
+  filter(item_type != "code") %>% 
+  group_by(student_id, chapter_number, section_number, item_id) %>% 
+  summarise(n = n()) %>% 
+  arrange(desc(n))
+
+
+responses %>% 
+  select(student_id, chapter_number, section_number, item_id, points_earned)
+
+responses
+```
+
+```{r}
+responses
+```
+
+
+on question
+correct
+
+is the student earned this point because that he try many many attempts
+if yes, can we use a method to avoid this happen, for example generate a similar question that can never repeat
+
+non-correct
+
+find question that cause many student lose point,
+see if the question are misleading or concept are too hard(question bias)
+if yes, can we improve
+if not is it because of the topic is too hard or textbook explain the concept too complex
+
+
+
+```{r}
+responses %>% 
+  filter(item_type != "code") %>% 
+  filter(points_possible == points_earned) %>% 
+  group_by(student_id, item_id) %>% 
+  summarize(chapter_number,
+            section_number,
+            attempt = n())
+
+responses %>% 
+  filter(item_type != "code")
+
+responses %>% 
+  filter(item_type != "code") %>% 
+  filter(points_possible > points_earned) %>% 
+  group_by(student_id, item_id) %>% 
+  summarize(chapter_number,
+            section_number,
+            attempt = n())
+
+
+new_responses <- responses %>% 
+  filter(item_type != "code") %>% 
+  group_by(student_id, item_id) %>% 
+  summarize(earned = any(points_possible == points_earned)) %>% 
+  right_join(responses %>% filter(item_type != "code"), by = join_by(student_id, item_id))
+
+
+
+new_responses %>% 
+  ungroup() %>% 
+  filter(earned) %>% 
+  group_by(student_id, item_id) %>% 
+  summarize(attempt = n()) %>% 
+  ggplot(
+    aes(
+      x = attempt
+    )
+  ) + geom_histogram()
+
+new_responses %>% 
+  ungroup() %>% 
+  filter(earned) %>% 
+  group_by(student_id, item_id) %>% 
+  summarize(attempt = n()) %>% 
+  arrange(desc(attempt))
+
+
+responses %>% 
+  filter(item_type == "code") %>% 
+  filter(points_possible == points_earned) %>% 
+  ggplot(
+    aes(
+      x = attempt
+    )
+  ) + geom_histogram()
+
+responses %>% 
+  filter(item_type == "code") %>% 
+  filter(points_possible > points_earned) %>% 
+  ggplot(
+    aes(
+      x = attempt
+    )
+  ) + geom_histogram()
+
+
+responses %>% 
+  filter(item_type == "code") %>% 
+  group_by(student_id, item_id) %>% 
+  summarize(earned = any(points_possible == points_earned)) %>% 
+  right_join(responses %>% filter(item_type == "code"), by = join_by(student_id, item_id)) %>% 
+  ungroup() %>% 
+  filter(earned) %>% 
+  group_by(student_id, item_id) %>% 
+  summarize(attempt = n()) %>% 
+  arrange(desc(attempt)) %>% 
+  mutate(range = case_when(
+    attempt >= 15 ~ "15 or more",
+    attempt >= 10 ~ "10 to 15",
+    attempt >= 5 ~ "5 to 10",
+    attempt >= 0 ~ "less than 5"
+  )) 
+
+
+responses %>% 
+  filter(item_type != "code") %>% 
+  group_by(student_id, item_id) %>% 
+  summarize(earned = any(points_possible == points_earned)) %>% 
+  right_join(responses %>% filter(item_type != "code"), by = join_by(student_id, item_id)) %>% 
+  ungroup() %>% 
+  filter(earned) %>% 
+  group_by(student_id, item_id) %>% 
+  summarize(attempt = n()) %>% 
+  arrange(desc(attempt)) %>% 
+  mutate(range = case_when(
+    attempt >= 15 ~ "15 or more",
+    attempt >= 10 ~ "10 to 15",
+    attempt >= 5 ~ "5 to 10",
+    attempt >= 0 ~ "less than 5"
+  )) %>% 
+  write.csv("non_code_attempt.csv")
+
+
+```
+```{r}
+new_responses %>%
+  ungroup() %>%
+  filter(earned) %>%
+  group_by(student_id,item_id) %>%
+  summarize(attempt = n()) %>%
+  ggplot(aes(x="", y=attempt, fill=factor(attempt))) + geom_bar(stat = "identity", width = 1) + 
+  coord_polar(theta = "y") + theme_void() + labs(fill = "attempts")
+```
+
+
+
+```{r}
+temp <- responses %>% 
+  group_by(student_id, item_id) %>% 
+  summarize(earned = any(points_possible == points_earned)) %>% 
+  right_join(responses, by = join_by(student_id, item_id))
+
+
+
+temp %>%
+  filter(!earned) %>% 
+  ggplot(
+    aes(
+      x = chapter_number,
+      fill = book
+    )
+  ) + geom_histogram(position = "dodge") + theme(legend.position="top")
+
+
+
+temp <- checkpoints_eoc %>% 
+  group_by(book, chapter_number) %>% 
+  summarize(chapter_number,
+            EOC = mean(EOC, na.rm = TRUE),
+            book) %>% 
+  unique()
+
+temp %>% 
+  group_by(book) %>% 
+  subset(book == "College / Advanced Statistics and Data Science (ABCD)") %>% 
+  tsdisplay()
+
+temp %>% 
+  group_by(book) %>% 
+  subset(book == "College / Statistics and Data Science (ABC)") %>% 
+  tsdisplay()
+
+temp %>% 
+  group_by(book) %>% 
+  subset(book == "High School / Advanced Statistics and Data Science I (ABC)") %>% 
+  tsdisplay()
+```
+
+
+```{r}
+checkpoints_eoc %>% 
+  group_by(chapter_number, book) %>% 
+  summarize(chapter_number,
+            EOC = mean(EOC, na.rm = TRUE),
+            book) %>% 
+  ggplot(
+    aes(
+      x = chapter_number,
+      y = EOC,
+      color = book
+    )
+  ) + geom_line(size=2) + theme_classic() + theme(legend.position="left", legend.key.size =  unit(0.5,"line"))
+
+ggsave("line.png")
+
+```
+
+
+```{r}
+
+responses
+
+```
+
+
+
+engage vs EOS
+
+```{r warning=FALSE}
+checkpoints_eoc
+
+x <- page_views %>% 
+  group_by(book, student_id, chapter_number) %>% 
+  summarise(total_engaged = sum(engaged, na.rm = TRUE)) %>% 
+  right_join(checkpoints_eoc, by = join_by(student_id, chapter_number, book)) 
+
+x %>% 
+  ungroup() %>% 
+  group_by(chapter_number) %>% 
+  summarize(mean_total_engaged = mean(total_engaged, na.rm = TRUE),
+            mean_EOC = mean(EOC, na.rm = TRUE))%>% 
+  ggplot(
+    aes(
+      x = mean_total_engaged,
+      y = mean_EOC
+    )
+  ) + geom_line()
+
+
+for (i in 1:16) {
+  p <- x %>% 
+    filter(chapter_number == i) %>% 
+    ggplot(
+    aes(
+      x = total_engaged,
+      y = EOC
+    )
+  ) + geom_point()
+  
+  print(p)
+  
+  a <- summary(lm(EOC~ total_engaged, data = x %>% filter(chapter_number == i)))
+  print(a)
+}
+```
+
+```{r}
+
+checkpoints_eoc <- checkpoints_eoc %>%
+  group_by(class_id, chapter_number) %>%
+  mutate(
+    # Calculate quantiles within each group
+    quantile = ntile(EOC, 4),  # Divides into quartiles
+
+    # Assign status based on quantiles
+    status = case_when(
+      EOC > 0.7 ~ "On Progress",
+      quantile == 1 ~ "Fall Behind",
+      quantile == 2 ~ "Risky",
+      quantile >= 3 ~ "On Progress"
+    )
+  )
+checkpoints_eoc %>% 
+  write.csv("checkpoints_eoc_status.csv")
+
+```
+
+
+```{r}
+page_views
+```
+
+student id
+attempt
+
+Book and Chapter
+
+Engaged idle_brief, idle_long, off_page_brief, off_page_long (sum up by chapter)
+
+```{r}
+new_page_views <- page_views %>% 
+  group_by(student_id, book, chapter_number) %>% 
+  summarize(total_engaged = sum(engaged, na.rm = TRUE),
+            total_idel_brief = sum(idle_brief, na.rm = TRUE),
+            total_idle_long = sum(idle_long, na.rm = TRUE),
+            total_off_page_brief = sum(off_page_brief, na.rm = TRUE),
+            total_off_page_long = sum(off_page_long, na.rm = TRUE)
+            )
+
+new_page_views
+```
+
+```{r}
+
+new_tried_again_clicks <- page_views %>% 
+  group_by(student_id, book, chapter_number, section_number) %>% 
+  summarize(x = max(tried_again_clicks)) %>% 
+  ungroup() %>% 
+  group_by(student_id, book, chapter_number) %>% 
+  summarize(total_tried_again_clicks = sum(x))
+
+new_was_complete <- page_views %>% 
+  mutate(was_complete_true = ifelse(was_complete, 1, 0),
+         was_complete_false = ifelse(!was_complete, 1, 0)) %>% 
+  group_by(student_id, book, chapter_number) %>% 
+  summarize(was_complete_true = sum(was_complete_true), 
+            was_complete_false = sum(was_complete_false))
+  
+
+```
+
+
+tried_again_clicks (max by section, sum by chapter)
+was_complete(dummy then sum())
+
+EOC from lag1 chapter()
+
+
+```{r}
+temp_eoc <- checkpoints_eoc %>%
+  arrange(student_id, chapter_number) %>%  # Make sure data is ordered correctly
+  group_by(student_id) %>%
+  mutate(lag1_eoc = lag(EOC, 1),
+         lag2_eoc = lag(EOC, 2),
+         lag3_eoc = lag(EOC, 3))
+```
+
+```{r}
+
+new_responses <- responses %>%
+  group_by(student_id, book, chapter_number) %>%
+  summarise(total_attempt = sum(attempt, na.rm = TRUE))
+
+```
+
+
+```{r}
+df_full <- new_page_views %>% 
+  inner_join(new_tried_again_clicks, by = join_by(student_id, chapter_number)) %>% 
+  inner_join(new_was_complete, by = join_by(student_id, chapter_number)) %>% 
+  inner_join(new_responses,  by = join_by(student_id,book , chapter_number)) %>% 
+  right_join(temp_eoc, by = join_by(student_id, book, chapter_number)) %>% 
+  select(-c(quantile, book.x, book.y, EOC, class_id))
+
+
+df_full <- df_full %>% 
+  mutate(book = as.factor(book),
+         status = as.factor(status))
+
+write.csv(df_full, "df_full.csv")
+```
+
+
+```{r}
+df_full
+```
+
+
+
+```{r}
+responses %>% 
+  filter(item_type != "code")
+```
+
+
+
+
+
+
+
+
+
